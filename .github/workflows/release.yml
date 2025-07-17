@@ -1,0 +1,133 @@
+name: Release
+
+on:
+  pull_request:
+    branches: [ main ]
+    types: [ closed ]
+  workflow_dispatch:
+    inputs:
+      snapshot:
+        description: 'Create a snapshot release'
+        required: false
+        default: false
+        type: boolean
+      bump:
+        description: 'Bump type (major, minor, patch)'
+        required: true
+        default: 'patch'
+        type: choice
+        options:
+          - major
+          - minor
+          - patch
+
+permissions:
+  id-token: write
+  contents: write
+
+jobs:
+  release:
+    if: >-
+      (github.event_name == 'pull_request' &&
+      github.event.action == 'closed' &&
+      github.event.pull_request.merged == true &&
+      github.event.pull_request.base.ref == 'main' &&
+      contains(join(github.event.pull_request.labels.*.name, ','), 'bump:')) ||
+      github.event_name == 'workflow_dispatch'
+    runs-on:
+      - ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+
+      - name: Determine bump type
+        id: determine_bump
+        run: |
+          if [[ "${{ github.event_name }}" == "workflow_dispatch" ]]; then
+            echo "bump=${{ github.event.inputs.bump }}" >> $GITHUB_OUTPUT
+          else
+            echo "Checking for bump label..."
+            LABELS=$(echo '${{ toJson(github.event.pull_request.labels) }}' | jq -r 'if length > 0 then map(.name) | join(",") else "" end')
+
+            if [[ -z "$LABELS" ]]; then
+              echo "No labels found on the pull request. Skipping workflow."
+              exit 0
+            fi
+
+            echo "Labels: $LABELS"
+            BUMP_LABELS=$(echo "$LABELS" | grep -oE "bump:(major|minor|patch)" | sort | uniq)
+            BUMP_COUNT=$(echo "$BUMP_LABELS" | wc -l)
+
+            if [[ "$BUMP_COUNT" -gt 1 ]]; then
+              echo "Error: Multiple bump labels found: $BUMP_LABELS. Please use only one bump label." >&2
+              exit 1
+            elif [[ "$BUMP_LABELS" == *"bump:major"* ]]; then
+              echo "bump=major" >> $GITHUB_OUTPUT
+            elif [[ "$BUMP_LABELS" == *"bump:minor"* ]]; then
+              echo "bump=minor" >> $GITHUB_OUTPUT
+            elif [[ "$BUMP_LABELS" == *"bump:patch"* ]]; then
+              echo "bump=patch" >> $GITHUB_OUTPUT
+            else
+              echo "No bump label found. Skipping workflow."
+              exit 0
+            fi
+          fi
+
+      - name: Get Release Bot App Token
+        id: get-token
+        uses: tibdex/github-app-token@v2.1.0
+        with:
+          app_id: ${{ secrets.RELEASE_BOT_GH_APP_ID }}
+          private_key: ${{ secrets.RELEASE_BOT_GH_APP_PRIVATE_KEY }}
+
+      # Install devcontainer cli
+      - name: Install devcontainer cli and build devcontainer
+        shell: bash
+        run: |
+          npm install -g @devcontainers/cli
+          devcontainer build --image-name jreslock/jwt-issuer-release:latest --config .devcontainer/CI/devcontainer.json --workspace-folder .
+
+      - name: Run devcontainer
+        shell: bash
+        run: |
+          devcontainer up --config .devcontainer/CI/devcontainer.json --workspace-folder .
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Generate CHANGELOG.md, bump version, and create release
+        id: release
+        shell: bash
+        run: |
+          devcontainer exec --config .devcontainer/CI/devcontainer.json --workspace-folder .
+            set -e
+            echo "Running release tasks - if any command fails, the workflow will exit immediately"
+
+            CURRENT_TAG=$(task get-current-tag | tail -n 1)
+            NEXT_TAG=$(task get-next-tag VERSION_TYPE=${{ steps.determine_bump.outputs.bump }} | tail -n 1)
+            echo "Bumping version from $CURRENT_TAG to $NEXT_TAG"
+
+            # Pass GITHUB_TOKEN explicitly to each task that needs it
+            task bump-${{ steps.determine_bump.outputs.bump }}
+            task build
+
+            if [ "${{ github.event_name }}" = "workflow_dispatch" ] && [ "${{ github.event.inputs.snapshot }}" = "true" ]; then
+              task release-snapshot
+            else
+              task release
+            fi
+        env:
+          AWS_REGION: ${{ env.AWS_REGION }}
+          AWS_ACCESS_KEY_ID: ${{ steps.aws-credentials.outputs.aws-access-key-id }}
+          AWS_SECRET_ACCESS_KEY: ${{ steps.aws-credentials.outputs.aws-secret-access-key }}
+          AWS_SESSION_TOKEN: ${{ steps.aws-credentials.outputs.aws-session-token }}
+          GITHUB_TOKEN: ${{ steps.get-token.outputs.token }}
+
+      - name: Publish Release Artifacts
+        id: publish-artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-artifacts
+          path: |
+            artifacts/*

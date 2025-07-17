@@ -1,0 +1,44 @@
+{
+    "name": "jwt-issuer-ci",
+    "build": {
+        "dockerfile": "../Dockerfile"
+    },
+    "customizations": {
+        "vscode": {
+            "extensions": [
+                "ms-azuretools.vscode-docker"
+            ]
+        }
+    },
+    "go.toolsEnvVars": {
+        "GOFLAGS": "-mod=mod",
+        "GO111MODULE": "on"
+    },
+    "go.useLanguageServer": true,
+    "go.lintTool": "golangci-lint",
+    "go.lintFlags": [
+        "--fast"
+    ],
+    "features": {
+        "ghcr.io/devcontainers/features/aws-cli:1": {
+            "version": "latest"
+        },
+        "ghcr.io/devcontainers/features/docker-in-docker": {},
+        "ghcr.io/devcontainers/features/github-cli:1": {},
+        "ghcr.io/va-h/devcontainers-features/uv:1": {}
+    },
+    "containerEnv": {
+        "AWS_SDK_LOAD_CONFIG": "true",
+        "GOFLAGS": "-mod=mod",
+        "GO111MODULE": "on"
+    },
+    "remoteUser": "root",
+    "postStartCommand": {
+        "safe-dir": "git config --global --add safe.directory ${containerWorkspaceFolder} && task pre-commit-install"
+    },
+    "workspaceMount": "source=${localWorkspaceFolder},target=/workspace,type=bind,consistency=cached,readonly=false",
+    "workspaceFolder": "/workspace",
+    "mounts": [
+        "source=/var/run/docker.sock,target=/var/run/docker.sock,type=bind,consistency=cached,readonly=false"
+    ]
+}

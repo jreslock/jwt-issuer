@@ -1,0 +1,8 @@
+bucket       = "BUCKET_NAME"
+key          = "PATH/TO/STATE/dev.tfstate"
+encrypt      = true
+region       = "REGION"
+use_lockfile = true
+assume_role = {
+  role_arn = "YOUR_ROLE_ARN"
+}

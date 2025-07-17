@@ -1,0 +1,188 @@
+version: "3"
+
+vars:
+  ARTIFACTS_DIR: artifacts
+  ISSUER_BINARY_NAME: jwt-issuer
+  JWKS_BINARY_NAME: jwks
+  GO_VERSION: "1.24"
+
+env:
+  ECR: "389719579847.dkr.ecr.us-east-1.amazonaws.com"
+  GITHUB_TOKEN: "{{.GITHUB_TOKEN}}"
+  AWS_SDK_LOAD_CONFIG: "true"
+
+tasks:
+  default:
+    cmds:
+      - task --list-all
+    silent: true
+
+  build:
+    desc: Build all required binaries and docker images
+    deps:
+      - clean
+    vars:
+      # Not using this yet. Goreleaser will build the plan binaries with the correct flags
+      LD_FLAGS: "-X main.version={{.VERSION}} -X main.commit={{.COMMIT}} -X main.date={{.DATE}}"
+    cmds:
+      - mkdir -p {{.ARTIFACTS_DIR}}
+      - cd lambda/{{.ISSUER_BINARY_NAME}} && CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -o
+        ../../{{.ARTIFACTS_DIR}}/{{.ISSUER_BINARY_NAME}}-linux-amd64 ./main.go
+      - cd lambda/{{.ISSUER_BINARY_NAME}} && CGO_ENABLED=0 GOOS=linux GOARCH=arm64 go build -o
+        ../../{{.ARTIFACTS_DIR}}/{{.ISSUER_BINARY_NAME}}-linux-arm64 ./main.go
+      - cd lambda/{{.JWKS_BINARY_NAME}} && CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -o
+        ../../{{.ARTIFACTS_DIR}}/{{.JWKS_BINARY_NAME}}-linux-amd64 ./main.go
+      - cd lambda/{{.JWKS_BINARY_NAME}} && CGO_ENABLED=0 GOOS=linux GOARCH=arm64 go build -o
+        ../../{{.ARTIFACTS_DIR}}/{{.JWKS_BINARY_NAME}}-linux-arm64 ./main.go
+      # Build the docker images for the issuer and jwks lambda functions
+      - docker buildx build --platform linux/amd64 --provenance=false -t {{.ISSUER_BINARY_NAME}} -f lambda/{{.ISSUER_BINARY_NAME}}/Dockerfile .
+      - docker buildx build --platform linux/amd64 --provenance=false -t {{.JWKS_BINARY_NAME}} -f lambda/{{.JWKS_BINARY_NAME}}/Dockerfile .
+
+  test:
+    desc: Run unit tests
+    cmds:
+      - cd lambda/{{.ISSUER_BINARY_NAME}} && go test ./... -cover
+      - cd lambda/{{.JWKS_BINARY_NAME}} && go test ./... -cover
+
+  fmt:
+    desc: Run go fmt
+    cmds:
+      - cd lambda/{{.ISSUER_BINARY_NAME}} && go fmt ./...
+      - cd lambda/{{.JWKS_BINARY_NAME}} && go fmt ./...
+
+  lint:
+    desc: Run linters
+    cmds:
+      - cd lambda/{{.ISSUER_BINARY_NAME}} && go vet ./...
+      - cd lambda/{{.JWKS_BINARY_NAME}} && go vet ./...
+      - cd lambda/{{.ISSUER_BINARY_NAME}} && golangci-lint run
+      - cd lambda/{{.JWKS_BINARY_NAME}} && golangci-lint run
+
+  tidy:
+    desc: Run go mod tidy
+    cmds:
+      - cd lambda/{{.ISSUER_BINARY_NAME}} && go mod tidy
+      - cd lambda/{{.JWKS_BINARY_NAME}} && go mod tidy
+
+  clean:
+    desc: Clean build artifacts
+    cmds:
+      - rm -rf {{.ARTIFACTS_DIR}}
+
+  get-current-tag:
+    desc: Get the current version tag
+    aliases:
+      - version
+    cmds:
+      - svu current
+
+  get-next-tag:
+    desc: Get the next version tag based on VERSION_TYPE
+    vars:
+      VERSION_TYPE: "{{default `patch` .VERSION_TYPE}}"
+    cmds:
+      - svu {{.VERSION_TYPE}}
+
+  bump-version:
+    desc: Bump version (patch, minor, or major)
+    vars:
+      VERSION_TYPE: "{{default `patch` .VERSION_TYPE}}"
+      CURRENT_TAG:
+        sh: task get-current-tag | tail -n 1
+      NEXT_TAG:
+        sh: task get-next-tag VERSION_TYPE={{.VERSION_TYPE}} | tail -n 1
+    cmds:
+      - echo "Bumping version from {{.CURRENT_TAG}} to {{.NEXT_TAG}}"
+      - git config user.name "release-automator[bot]"
+      - git config user.email
+        "1208257+release-automator[bot]@users.noreply.github.com"
+      - git remote set-url origin https://x-access-token:${GITHUB_TOKEN}@github.com/jreslock/jwt-issuer.git
+      - git config --unset-all http.https://github.com/.extraheader
+      - task changelog NEXT_TAG={{.NEXT_TAG}}
+      - git add CHANGELOG.md
+      - git commit -am "Release {{.NEXT_TAG}}"
+      - git tag -a {{.NEXT_TAG}} -m "Release {{.NEXT_TAG}}"
+      - echo "Pushing changes to main branch..."
+      - git push origin main || (echo "Failed to push to main branch" && exit 1)
+      - echo "Pushing tag {{.NEXT_TAG}}..."
+      - git push origin {{.NEXT_TAG}} || (echo "Failed to push tag {{.NEXT_TAG}}" && exit 1)
+
+  bump-patch:
+    desc: Bump patch version
+    vars:
+      VERSION_TYPE: patch
+    cmds:
+      - task bump-version VERSION_TYPE={{.VERSION_TYPE}}
+
+  bump-minor:
+    desc: Bump minor version
+    vars:
+      VERSION_TYPE: minor
+    cmds:
+      - task bump-version VERSION_TYPE={{.VERSION_TYPE}}
+
+  bump-major:
+    desc: Bump major version
+    vars:
+      VERSION_TYPE: major
+    cmds:
+      - task bump-version VERSION_TYPE={{.VERSION_TYPE}}
+
+  changelog:
+    desc: Generate changelog
+    cmds:
+      - echo "Generating changelog with NEXT_TAG={{.NEXT_TAG}}"
+      - git-chglog --next-tag {{.NEXT_TAG}} -o CHANGELOG.md
+
+  publish_container_images:
+    desc: Publish container images
+    vars:
+      ECR: "{{.ECR}}"
+      TAG:
+        sh: task get-current-tag | tail -n 1
+    cmds:
+      - aws ecr get-login-password --region us-east-1 | docker login --username AWS --password-stdin {{.ECR}}
+      - docker tag {{.ISSUER_BINARY_NAME}} {{.ECR}}/{{.ISSUER_BINARY_NAME}}:latest
+      - docker tag {{.ISSUER_BINARY_NAME}} {{.ECR}}/{{.ISSUER_BINARY_NAME}}:{{.TAG}}
+      - docker tag {{.JWKS_BINARY_NAME}} {{.ECR}}/{{.JWKS_BINARY_NAME}}:latest
+      - docker tag {{.JWKS_BINARY_NAME}} {{.ECR}}/{{.JWKS_BINARY_NAME}}:{{.TAG}}
+      - docker push {{.ECR}}/{{.ISSUER_BINARY_NAME}}:latest
+      - docker push {{.ECR}}/{{.ISSUER_BINARY_NAME}}:{{.TAG}}
+      - docker push {{.ECR}}/{{.JWKS_BINARY_NAME}}:latest
+      - docker push {{.ECR}}/{{.JWKS_BINARY_NAME}}:{{.TAG}}
+
+  release:
+    desc: Create a new release
+    cmds:
+      - goreleaser release --clean --config .goreleaser.yml
+      - task publish_container_images
+
+  release-snapshot:
+    desc: Create a snapshot release
+    cmds:
+      - goreleaser release --snapshot --clean --config .goreleaser.yml
+      - task publish_container_images
+
+  pre-commit-install:
+    desc: Install pre-commit hooks
+    cmds:
+      - pre-commit clean
+      - pre-commit install
+
+  pre-commit-run:
+    desc: Run pre-commit hooks on all files
+    deps:
+      - pre-commit-install
+    cmds:
+      - pre-commit run --all-files
+
+  pre-commit-update:
+    desc: Update pre-commit hooks to latest versions
+    cmds:
+      - pre-commit autoupdate
+
+  uv-venv:
+    desc: Create a virtual environment with uv and install cryptography
+    cmds:
+      - uv venv
+      - bash -c "source .venv/bin/activate && uv pip install cryptography"

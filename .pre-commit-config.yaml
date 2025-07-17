@@ -1,0 +1,67 @@
+repos:
+  # Tofu hooks
+  - repo: https://github.com/antonbabenko/pre-commit-terraform
+    rev: v1.99.5
+    hooks:
+      - id: terraform_fmt
+        args:
+          - "--hook-config=--tf-path=/usr/bin/tofu"
+          - "--args=-recursive -write=true"
+      - id: terraform_docs
+        args:
+          - --hook-config=--create-file-if-not-exist=true
+          - --args=--config=.terraform-docs.yml
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v5.0.0
+    hooks:
+      - id: trailing-whitespace
+      - id: end-of-file-fixer
+      - id: check-yaml
+      - id: check-added-large-files
+      - id: check-ast
+      - id: check-json
+      - id: check-merge-conflict
+      - id: detect-private-key
+  # Note we are NOT using golang hooks because they are deprecated:
+  # https://github.com/dnephin/pre-commit-golang/issues/98
+  # We already have tasks for go vet, go fmt, etc. in the Taskfile.yml
+  # So we use our own hooks here to run those tasks
+  - repo: local
+    hooks:
+      - id: go-fmt
+        name: go fmt
+        description: Runs go fmt using the Taskfile
+        entry: task fmt
+        language: system
+        pass_filenames: false
+        types: [go]
+
+      - id: golangci-lint
+        name: golangci-lint
+        description: Runs golangci-lint using the Taskfile
+        entry: task lint
+        language: system
+        pass_filenames: false
+        types: [go]
+
+      - id: go-test
+        name: go test
+        description: Runs go test using the Taskfile
+        entry: task test
+        language: system
+        pass_filenames: false
+        types: [go]
+
+      - id: go-mod-tidy
+        name: go mod tidy
+        description: Runs go mod tidy and explicitly checks for changes
+        entry: task tidy
+        language: system
+        pass_filenames: false
+
+      - id: check_changelog
+        name: Check Changelogs
+        entry: ./bin/check_changelogs terraform
+        language: system
+        files: ^terraform/.*\.tf$
+        pass_filenames: false

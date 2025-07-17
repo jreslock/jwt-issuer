@@ -1,0 +1,9 @@
+name             = "jwt-issuer-dev"
+create_ecr       = true
+domain           = "example.net"
+issuer_ecr_name  = "jwt-issuer"
+jwks_ecr_name    = "jwks"
+issuer_image_tag = "latest"
+jwks_image_tag   = "latest"
+region           = "REGION"
+role_arn         = "YOUR_ROLE_ARN"

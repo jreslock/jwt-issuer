@@ -1,0 +1,42 @@
+name: Run PR Checks
+
+on:
+  pull_request:
+    branches: [ main ]
+
+permissions:
+  id-token: write
+  contents: read
+
+jobs:
+  checks:
+    runs-on:
+      - ubuntu-latest
+    name: Run PR Checks
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+
+      # Install devcontainer cli
+      - name: Install devcontainer cli and build devcontainer
+        shell: bash
+        run: |
+            npm install -g @devcontainers/cli
+            devcontainer build --image-name jreslock/jwt-issuer-pr-checks:latest --config .devcontainer/CI/devcontainer.json --workspace-folder .
+
+      - name: Run devcontainer
+        shell: bash
+        run: |
+          devcontainer up --config .devcontainer/CI/devcontainer.json --workspace-folder .
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Run tests
+        shell: bash
+        run: |
+          devcontainer exec --config .devcontainer/CI/devcontainer.json --workspace-folder . task fmt
+          devcontainer exec --config .devcontainer/CI/devcontainer.json --workspace-folder . task lint
+          devcontainer exec --config .devcontainer/CI/devcontainer.json --workspace-folder . task test
+          devcontainer exec --config .devcontainer/CI/devcontainer.json --workspace-folder . task build

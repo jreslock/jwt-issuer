@@ -1,0 +1,70 @@
+{
+    "name": "jwt-issuer-dev",
+    "build": {
+        "dockerfile": "./Dockerfile"
+    },
+    "customizations": {
+        "vscode": {
+            "extensions": [
+                "amazonwebservices.aws-toolkit-vscode@3.46.0",
+                "atlassian.atlascode",
+                "github.vscode-pull-request-github",
+                "github.vscode-github-actions",
+                "opentofu.vscode-opentofu",
+                "ms-azuretools.vscode-docker",
+                "ms-python.python",
+                "redhat.vscode-yaml",
+                "task.vscode-task",
+                "timonwong.shellcheck"
+            ],
+            "settings": {
+                "editor.formatOnSave": true,
+                "editor.codeActionsOnSave": {
+                    "source.organizeImports": "always"
+                },
+                "go.toolsEnvVars": {
+                    "GOFLAGS": "-mod=mod",
+                    "GO111MODULE": "on"
+                },
+                "go.useLanguageServer": true,
+                "go.lintTool": "golangci-lint",
+                "go.lintFlags": [
+                    "--fast"
+                ],
+                "terminal.integrated.defaultProfile.linux": "zsh",
+                "terminal.integrated.profiles.linux": {
+                    "zsh": {
+                        "path": "/bin/zsh"
+                    }
+                }
+            }
+        }
+    },
+    "features": {
+        "ghcr.io/devcontainers/features/aws-cli:1": {
+            "version": "latest"
+        },
+        "ghcr.io/jajera/features/amazon-q-cli:1": {},
+        "ghcr.io/devcontainers/features/docker-in-docker": {},
+        "ghcr.io/devcontainers/features/github-cli:1": {},
+        "ghcr.io/va-h/devcontainers-features/uv:1": {}
+    },
+    "remoteUser": "root",
+    "postStartCommand": {
+        "safe-dir": "git config --global --add safe.directory ${containerWorkspaceFolder} && task pre-commit-install"
+    },
+    "containerEnv": {
+        "AWS_SDK_LOAD_CONFIG": "true",
+        "GOFLAGS": "-mod=mod",
+        "GO111MODULE": "on"
+    },
+    "workspaceMount": "source=${localWorkspaceFolder},target=/workspace,type=bind,consistency=cached,readonly=false",
+    "workspaceFolder": "/workspace",
+    "mounts": [
+        "source=${localEnv:HOME}${localEnv:USERPROFILE}/.aws,target=/root/.aws,type=bind,consistency=cached,readonly=false",
+        "source=${localEnv:HOME}${localEnv:USERPROFILE}/.cursor,target=/root/.cursor,type=bind,consistency=cached,readonly=false",
+        "source=${localEnv:HOME}${localEnv:USERPROFILE}/.config/gh,target=/root/.config/gh,type=bind,consistency=cached,readonly=false",
+        "source=${localEnv:HOME}${localEnv:USERPROFILE}/.zsh_history,target=/root/.zsh_history,type=bind,consistency=cached,readonly=false",
+        "source=/var/run/docker.sock,target=/var/run/docker.sock,type=bind,consistency=cached,readonly=false"
+    ]
+}
