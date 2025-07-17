@@ -21,24 +21,21 @@ This repository provides a secure, AWS-native solution for issuing and validatin
 |   AWS API Gateway +----->+   Lambda:         +----->+   AWS Secrets      |
 |                   |      |   jwt-issuer      |      |   Manager (Keys)   |
 +-------------------+      +-------------------+      +-------------------+
-         |                          |
-         |                          v
-         |                +-------------------+
-         |                |   Lambda:         |
-         +--------------->+   jwks            |
-                          +-------------------+
-                                   |
-                                   v
-                          +-------------------+
-                          |   S3/CloudFront   |
-                          +-------------------+
+         |
+         |
+         |                +-------------------+      +-------------------+
+         |                |                   |      |                   |
+         +--------------->+   Lambda:         +----->+   SSM Parameter   |
+                          |   jwks            |      |   Store (JWKS)    |
+                          +-------------------+      +-------------------+
 ```
 
 - **jwt-issuer Lambda**: Issues JWTs for authenticated AWS IAM users/roles, signing them with a private key from Secrets Manager.
 - **jwks Lambda**: Serves the public JWKS for token validation, reading from SSM Parameter Store.
 - **API Gateway**: Secures endpoints, requiring AWS_IAM authentication and AWS Organization membership.
 - **ECR**: Stores Docker images for Lambda functions.
-- **S3/CloudFront**: (Optional) Serves static JWKS or other assets.
+- **Secrets Manager**: Stores private keys for JWT signing.
+- **SSM Parameter Store**: Stores public JWKS for token validation.
 
 ## Infrastructure
 
@@ -94,7 +91,8 @@ See `infrastructure/main.tf` for the root module and how these components are wi
 
    ```sh
    cd infrastructure
-   tofu init
+   rm -fr .terraform
+   tofu init -backend-config=./vars/dev.backend.tfvars
    tofu plan -var-file=vars/dev.tfvars
    tofu apply -var-file=vars/dev.tfvars
    ```
