@@ -1,6 +1,6 @@
 # syntax=docker/dockerfile:1
 
-FROM public.ecr.aws/docker/library/golang:1.24.4-bookworm
+FROM public.ecr.aws/docker/library/golang:1.24.5-bookworm
 
 # Add tfenv to PATH for the user
 ENV PATH="/root/.tenv:/root/.local/bin:/$(go env GOPATH)/bin:$PATH"
