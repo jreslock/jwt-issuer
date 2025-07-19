@@ -39,7 +39,7 @@ resource "aws_secretsmanager_secret_version" "keys" {
 }
 
 locals {
-  public_key_pem_trimmed = regex("^\\-+BEGIN PUBLIC KEY\\-+(.*?)\\-+END PUBLIC KEY\\-+$", replace(tls_private_key.key.public_key_pem, "/\\n/", ""))[0]
+  public_key_pem_trimmed = regex("^\\-+BEGIN PUBLIC KEY\\-+(.*?)\\-+END PUBLIC KEY\\-+$", replace(tls_private_key.key.public_key_pem, "\n", ""))[0]
 }
 
 data "external" "jwks" {
