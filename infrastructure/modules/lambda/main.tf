@@ -19,7 +19,7 @@ resource "aws_lambda_alias" "lambda_alias" {
   function_name    = aws_lambda_function.lambda_function.function_name
   function_version = aws_lambda_function.lambda_function.version
   # Create the alias but don't update it when the version changes
-  # We will manage updating the alias via a separeate deployment
+  # We will manage updating the alias via a separate deployment
   # pipeline
   lifecycle {
     ignore_changes = [
